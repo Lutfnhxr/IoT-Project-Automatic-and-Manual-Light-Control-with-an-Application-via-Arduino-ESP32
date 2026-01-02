@@ -2,11 +2,9 @@
 #include <FirebaseESP32.h>
 #include <time.h>
 
-/* ===== WIFI ===== */
+/* ===== WIFI & FIREBASE ===== */
 const char* ssid = "";
 const char* password = "";
-
-/* ===== FIREBASE ===== */
 #define FIREBASE_HOST ""
 #define FIREBASE_AUTH ""
 
@@ -14,18 +12,18 @@ FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
 
-/* ===== PIN ===== */
+/* ===== PIN & STATE ===== */
 #define RELAY_PIN 18
 #define SAKLAR_PIN 21
 
-/* ===== STATE ===== */
 bool lampuStatus = false;
 bool lastScheduleState = false;
 bool scheduleEnable = true;
+String controlSource = "AUTO"; 
 String startTime = "17:45";
 String endTime   = "03:30";
 
-/* ===== TIME ===== */
+/* ===== FUNGSI UTILITAS ===== */
 String waktuLengkap() {
   time_t now = time(nullptr);
   struct tm* t = localtime(&now);
@@ -33,11 +31,11 @@ String waktuLengkap() {
   const char* hari[] = {"Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"};
   char buf[64];
   sprintf(buf,"%s, %02d/%02d/%04d %02d:%02d WIB",
-    hari[t->tm_wday],t->tm_mday,t->tm_mon+1,t->tm_year+1900,t->tm_hour,t->tm_min);
+    hari[t->tm_wday],t->tm_mday,t->tm_mon+1,
+    t->tm_year+1900,t->tm_hour,t->tm_min);
   return String(buf);
 }
 
-/* ===== UTIL ===== */
 bool inSchedule(int h, int m) {
   int now = h * 60 + m;
   int s = startTime.substring(0,2).toInt() * 60 + startTime.substring(3,5).toInt();
@@ -50,18 +48,24 @@ void pushLog(String msg, String mode) {
   FirebaseJson log;
   log.set("event", msg);
   log.set("time", waktuLengkap());
+  log.set("mode", mode);
   Firebase.pushJSON(fbdo, "/logs", log);
 
   Firebase.setBool(fbdo, "/lampu/status", lampuStatus);
   Firebase.setString(fbdo, "/lampu/mode", mode);
   Firebase.setString(fbdo, "/lampu/time", waktuLengkap());
-  Firebase.setString(fbdo, "/lampu/last_event", msg);
+
+  FirebaseJson ev;
+  ev.set("text", msg);
+  ev.set("mode", mode);
+  Firebase.setJSON(fbdo, "/lampu/last_event", ev);
 }
 
-/* ===== RELAY ===== */
 void setLamp(bool on, String mode) {
   digitalWrite(RELAY_PIN, on ? HIGH : LOW);
   lampuStatus = on;
+  controlSource = mode.startsWith("MANUAL") ? "MANUAL" : "AUTO";
+  Firebase.setString(fbdo, "/lampu/control", controlSource);
   pushLog(on ? "Lampu MENYALA" : "Lampu MATI", mode);
 }
 
@@ -72,63 +76,85 @@ void setup() {
   pinMode(SAKLAR_PIN, INPUT_PULLUP);
 
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) delay(500);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
 
-  configTime(7 * 3600, 0, "pool.ntp.org");
+  configTime(7 * 3600, 0, "pool.ntp.org", "id.pool.ntp.org");
 
   config.host = FIREBASE_HOST;
   config.signer.tokens.legacy_token = FIREBASE_AUTH;
   Firebase.begin(&config, &auth);
 
+  // Tunggu sinkronisasi waktu (Mencegah lampu mati tiba-tiba)
+  time_t now = time(nullptr);
+  int retry = 0;
+  while (now < 1000000 && retry < 20) { delay(500); now = time(nullptr); retry++; }
+
+  // --- LOGIKA RECOVERY SETELAH BOOT ---
+  String lastMode = "AUTO";
+  if (Firebase.getString(fbdo, "/lampu/control")) {
+    lastMode = fbdo.stringData();
+  }
+  if (Firebase.getBool(fbdo, "/lampu/status")) {
+    lampuStatus = fbdo.boolData();
+  }
+
+  struct tm* t = localtime(&now);
+  bool currSchedule = scheduleEnable && inSchedule(t->tm_hour, t->tm_min);
+
+  if (lastMode == "MANUAL") {
+    // Mode Manual: Pertahankan status relay terakhir sebelum reboot
+    digitalWrite(RELAY_PIN, lampuStatus ? HIGH : LOW);
+  } else {
+    // Mode Auto: Ikuti jadwal saat ini
+    digitalWrite(RELAY_PIN, currSchedule ? HIGH : LOW);
+    lampuStatus = currSchedule;
+  }
+  
+  lastScheduleState = currSchedule;
+  Firebase.setBool(fbdo, "/lampu/status", lampuStatus);
+  Firebase.setBool(fbdo, "/lampu/last_schedule", lastScheduleState);
   Firebase.setString(fbdo, "/command/value", "NONE");
 }
 
 /* ===== LOOP ===== */
 void loop() {
-
   if (!Firebase.ready()) return;
 
-  /* === SAKLAR FISIK (PRIORITAS TERTINGGI) === */
+  // 1. SAKLAR FISIK
   static bool lastBtn = HIGH;
   bool btn = digitalRead(SAKLAR_PIN);
   if (btn != lastBtn) {
     delay(50);
     if (digitalRead(SAKLAR_PIN) == btn && btn == LOW) {
-      setLamp(!lampuStatus, "MANUAL");
+      setLamp(!lampuStatus, "MANUAL_SWITCH");
     }
     lastBtn = btn;
   }
 
-  /* === REMOTE APP === */
+  // 2. KONTROL APLIKASI
   if (Firebase.getString(fbdo, "/command/value")) {
     String cmd = fbdo.stringData();
-    if (cmd == "ON") setLamp(true, "MANUAL");
-    if (cmd == "OFF") setLamp(false, "MANUAL");
-    if (cmd != "NONE") Firebase.setString(fbdo, "/command/value", "NONE");
+    if (cmd == "ON") { setLamp(true, "MANUAL_APP"); Firebase.setString(fbdo, "/command/value", "NONE"); }
+    else if (cmd == "OFF") { setLamp(false, "MANUAL_APP"); Firebase.setString(fbdo, "/command/value", "NONE"); }
   }
 
-  /* === UPDATE JADWAL === */
-  static unsigned long lastFetch = 0;
-  if (millis() - lastFetch > 60000) {
-    if (Firebase.getBool(fbdo, "/schedule/enable"))
-      scheduleEnable = fbdo.boolData();
-    if (Firebase.getString(fbdo, "/schedule/start"))
-      startTime = fbdo.stringData();
-    if (Firebase.getString(fbdo, "/schedule/end"))
-      endTime = fbdo.stringData();
-    lastFetch = millis();
-  }
-
-  /* === JADWAL EVENT BASED === */
+  // 3. LOGIKA JADWAL (AUTO)
   time_t now = time(nullptr);
   struct tm* t = localtime(&now);
-  if (!t || t->tm_year < 120) return;
+  if (t && t->tm_year >= 120) {
+    bool currSchedule = scheduleEnable && inSchedule(t->tm_hour, t->tm_min);
+    
+    if (currSchedule != lastScheduleState) {
+      lastScheduleState = currSchedule;
+      Firebase.setBool(fbdo, "/lampu/last_schedule", lastScheduleState);
 
-  bool currSchedule = scheduleEnable && inSchedule(t->tm_hour, t->tm_min);
-
-  if (currSchedule != lastScheduleState) {
-    setLamp(currSchedule, "AUTO");
-    lastScheduleState = currSchedule;
+      if (currSchedule) {
+        if (!lampuStatus) setLamp(true, "AUTO");
+      } else {
+        // Jika jadwal berakhir, paksa mati meskipun sebelumnya Manual ON
+        setLamp(false, "AUTO"); 
+      }
+    }
   }
 
   delay(200);
