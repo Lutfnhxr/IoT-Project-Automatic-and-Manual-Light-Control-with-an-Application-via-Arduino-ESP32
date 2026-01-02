@@ -48,8 +48,8 @@ class _HomePageState extends State<HomePage> {
   final DatabaseReference db = FirebaseDatabase.instance.ref();
   bool status = false;
   String mode = "-", time = "-";
-  String startStr = "18:00"; // Default jika data belum ada
-  String endStr = "06:00";   // Default jika data belum ada
+  String startStr = "18:00";
+  String endStr = "06:00";
   List<String> logs = [];
 
   @override
@@ -77,7 +77,7 @@ class _HomePageState extends State<HomePage> {
       }
     });
 
-    // Ambil Status Lampu
+    // Listen Status Lampu
     db.child("lampu").onValue.listen((e) {
       final d = e.snapshot.value as Map?;
       if (d != null) {
@@ -89,7 +89,7 @@ class _HomePageState extends State<HomePage> {
       }
     });
 
-    // AMBIL JADWAL DARI FIREBASE (Agar Sinkron dengan ESP32)
+    // Listen Jadwal dari Firebase
     db.child("settings").onValue.listen((e) {
       final d = e.snapshot.value as Map?;
       if (d != null) {
@@ -100,9 +100,13 @@ class _HomePageState extends State<HomePage> {
       }
     });
 
+    // Listen Riwayat Logs
     db.child("logs").limitToLast(10).onValue.listen((e) {
       final d = e.snapshot.value as Map?;
-      if (d == null) return;
+      if (d == null) {
+        setState(() => logs = []);
+        return;
+      }
       final list = d.values.map((v) {
         final m = Map<String, dynamic>.from(v as Map);
         return "${m["time"] ?? "--"} - ${m["event"] ?? "Aktivitas"} (${m["mode"] ?? "-"})";
@@ -111,17 +115,24 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  // FUNGSI UNTUK MERUBAH JAM
+  // FUNGSI UBAH JAM
   Future<void> _pickTime(String key) async {
     TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
     );
     if (picked != null) {
-      // Format jam agar menjadi HH:mm (Misal 07:05)
       String formattedTime = "${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}";
       db.child("settings/$key").set(formattedTime);
     }
+  }
+
+  // FUNGSI HAPUS RIWAYAT
+  Future<void> _clearLogs() async {
+    await db.child("logs").remove();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Riwayat telah dibersihkan")),
+    );
   }
 
   @override
@@ -144,11 +155,11 @@ class _HomePageState extends State<HomePage> {
                 children: [
                   const Text(
                     "SMART LAMP CONTROL",
-                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 3),
+                    style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 3),
                   ),
                   const SizedBox(height: 30),
                   
-                  // CARD STATUS
+                  // CARD STATUS UTAMA
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(25),
@@ -164,15 +175,15 @@ class _HomePageState extends State<HomePage> {
                           status ? "MENYALA" : "MATI",
                           style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: status ? Colors.amber : Colors.white70),
                         ),
-                        Text("Mode: $mode", style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                        Text("Mode Terakhir: $mode", style: const TextStyle(color: Colors.white70, fontSize: 14)),
                         const Divider(height: 30, color: Colors.white10),
                         
-                        // FITUR SETTING JADWAL
+                        // ROW PENGATURAN JADWAL
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
                             _timeDisplay("MULAI", startStr, () => _pickTime("startTime")),
-                            const Icon(Icons.arrow_forward_rounded, color: Colors.white24),
+                            const Icon(Icons.arrow_forward_rounded, color: Colors.white24, size: 20),
                             _timeDisplay("SELESAI", endStr, () => _pickTime("endTime")),
                           ],
                         )
@@ -190,21 +201,36 @@ class _HomePageState extends State<HomePage> {
                   ),
                   
                   const SizedBox(height: 30),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text("Riwayat Aktivitas", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  
+                  // HEADER RIWAYAT + TOMBOL HAPUS
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Riwayat Aktivitas", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      TextButton.icon(
+                        onPressed: _clearLogs,
+                        icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
+                        label: const Text("Hapus", style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  ...logs.map((log) => Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.4),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Text(log, style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                  )),
+                  const SizedBox(height: 10),
+                  
+                  // LIST LOGS
+                  logs.isEmpty 
+                    ? const Text("Tidak ada riwayat", style: TextStyle(color: Colors.white24))
+                    : Column(
+                        children: logs.map((log) => Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Text(log, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                        )).toList(),
+                      ),
                 ],
               ),
             ),
@@ -214,7 +240,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Widget Tampilan Jam Jadwal
   Widget _timeDisplay(String label, String value, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -223,7 +248,7 @@ class _HomePageState extends State<HomePage> {
           Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           Text(value, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-          const Text("Klik untuk ubah", style: TextStyle(color: Colors.blue, fontSize: 8)),
+          const Text("Sentuh untuk ubah", style: TextStyle(color: Colors.blueAccent, fontSize: 9)),
         ],
       ),
     );
@@ -238,7 +263,7 @@ class _HomePageState extends State<HomePage> {
           padding: const EdgeInsets.symmetric(vertical: 18),
         ),
         onPressed: onPress,
-        child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
       ),
     );
   }
