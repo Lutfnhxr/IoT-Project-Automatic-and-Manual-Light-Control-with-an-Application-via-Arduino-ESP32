@@ -7,7 +7,6 @@ import 'firebase_options.dart';
 
 final FlutterLocalNotificationsPlugin localNotif = FlutterLocalNotificationsPlugin();
 
-// Handler untuk notifikasi saat aplikasi di background
 Future<void> _bgHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 }
@@ -16,7 +15,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // Inisialisasi Notifikasi Lokal
   const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
   await localNotif.initialize(const InitializationSettings(android: androidInit));
 
@@ -50,20 +48,18 @@ class _HomePageState extends State<HomePage> {
   final DatabaseReference db = FirebaseDatabase.instance.ref();
   bool status = false;
   String mode = "-", time = "-";
+  String startStr = "18:00"; // Default jika data belum ada
+  String endStr = "06:00";   // Default jika data belum ada
   List<String> logs = [];
 
   @override
   void initState() {
     super.initState();
 
-    // 1. Ambil & Simpan Token FCM
     FirebaseMessaging.instance.getToken().then((token) {
-      if (token != null) {
-        db.child("fcm_tokens/$token").set(true);
-      }
+      if (token != null) db.child("fcm_tokens/$token").set(true);
     });
 
-    // 2. Listen Notifikasi (Foreground)
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       RemoteNotification? notification = message.notification;
       if (notification != null) {
@@ -73,17 +69,15 @@ class _HomePageState extends State<HomePage> {
           notification.body,
           const NotificationDetails(
             android: AndroidNotificationDetails(
-              'smart_lamp_channel',
-              'Smart Lamp Notifications',
-              importance: Importance.max,
-              priority: Priority.high,
+              'smart_lamp_channel', 'Smart Lamp Notifications',
+              importance: Importance.max, priority: Priority.high,
             ),
           ),
         );
       }
     });
 
-    // 3. Listen Status Lampu Real-time
+    // Ambil Status Lampu
     db.child("lampu").onValue.listen((e) {
       final d = e.snapshot.value as Map?;
       if (d != null) {
@@ -95,7 +89,17 @@ class _HomePageState extends State<HomePage> {
       }
     });
 
-    // 4. Listen Riwayat Logs
+    // AMBIL JADWAL DARI FIREBASE (Agar Sinkron dengan ESP32)
+    db.child("settings").onValue.listen((e) {
+      final d = e.snapshot.value as Map?;
+      if (d != null) {
+        setState(() {
+          startStr = d["startTime"] ?? "18:00";
+          endStr = d["endTime"] ?? "06:00";
+        });
+      }
+    });
+
     db.child("logs").limitToLast(10).onValue.listen((e) {
       final d = e.snapshot.value as Map?;
       if (d == null) return;
@@ -107,12 +111,24 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  // FUNGSI UNTUK MERUBAH JAM
+  Future<void> _pickTime(String key) async {
+    TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (picked != null) {
+      // Format jam agar menjadi HH:mm (Misal 07:05)
+      String formattedTime = "${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}";
+      db.child("settings/$key").set(formattedTime);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
-          // 1. BACKGROUND MENGGUNAKAN ASSET LOKAL (Fix statusCode: 0)
           Positioned.fill(
             child: Image.asset(
               "assets/bg.jpeg", 
@@ -120,13 +136,7 @@ class _HomePageState extends State<HomePage> {
               errorBuilder: (context, error, stackTrace) => Container(color: Colors.blueGrey), 
             ),
           ),
-          
-          // 2. OVERLAY GELAP (Agar teks putih tetap kontras)
-          Positioned.fill(
-            child: Container(color: Colors.black.withOpacity(0.6)),
-          ),
-
-          // 3. KONTEN UTAMA
+          Positioned.fill(child: Container(color: Colors.black.withOpacity(0.6))),
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
@@ -136,12 +146,12 @@ class _HomePageState extends State<HomePage> {
                     "SMART LAMP CONTROL",
                     style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 3),
                   ),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 30),
                   
-                  // CARD STATUS (Glassmorphism Style)
+                  // CARD STATUS
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(30),
+                    padding: const EdgeInsets.all(25),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(30),
@@ -149,30 +159,28 @@ class _HomePageState extends State<HomePage> {
                     ),
                     child: Column(
                       children: [
-                        Icon(
-                          Icons.lightbulb_rounded, 
-                          size: 100, 
-                          color: status ? Colors.amber : Colors.white10
-                        ),
-                        const SizedBox(height: 15),
+                        Icon(Icons.lightbulb_rounded, size: 80, color: status ? Colors.amber : Colors.white10),
                         Text(
                           status ? "MENYALA" : "MATI",
-                          style: TextStyle(
-                            fontSize: 32, 
-                            fontWeight: FontWeight.bold, 
-                            color: status ? Colors.amber : Colors.white70
-                          ),
+                          style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: status ? Colors.amber : Colors.white70),
                         ),
-                        const SizedBox(height: 5),
-                        Text("Mode: $mode", style: const TextStyle(color: Colors.white70, fontSize: 16)),
-                        Text(time, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                        Text("Mode: $mode", style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                        const Divider(height: 30, color: Colors.white10),
+                        
+                        // FITUR SETTING JADWAL
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _timeDisplay("MULAI", startStr, () => _pickTime("startTime")),
+                            const Icon(Icons.arrow_forward_rounded, color: Colors.white24),
+                            _timeDisplay("SELESAI", endStr, () => _pickTime("endTime")),
+                          ],
+                        )
                       ],
                     ),
                   ),
                   
-                  const SizedBox(height: 40),
-                  
-                  // TOMBOL KONTROL
+                  const SizedBox(height: 30),
                   Row(
                     children: [
                       _actionBtn("NYALAKAN", Colors.green.shade600, () => db.child("command/value").set("ON")),
@@ -181,30 +189,21 @@ class _HomePageState extends State<HomePage> {
                     ],
                   ),
                   
-                  const SizedBox(height: 40),
-
-                  // SEKSI RIWAYAT
+                  const SizedBox(height: 30),
                   const Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      "Riwayat Aktivitas", 
-                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)
-                    ),
+                    child: Text("Riwayat Aktivitas", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                   ),
                   const SizedBox(height: 12),
                   ...logs.map((log) => Container(
                     width: double.infinity,
                     margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(15),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.4),
                       borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Colors.white.withOpacity(0.05)),
                     ),
-                    child: Text(
-                      log, 
-                      style: const TextStyle(color: Colors.white70, fontSize: 12, height: 1.4)
-                    ),
+                    child: Text(log, style: const TextStyle(color: Colors.white70, fontSize: 11)),
                   )),
                 ],
               ),
@@ -215,13 +214,26 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // Widget Tampilan Jam Jadwal
+  Widget _timeDisplay(String label, String value, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text("Klik untuk ubah", style: TextStyle(color: Colors.blue, fontSize: 8)),
+        ],
+      ),
+    );
+  }
+
   Widget _actionBtn(String label, Color color, VoidCallback onPress) {
     return Expanded(
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: color,
-          foregroundColor: Colors.white,
-          elevation: 0,
+          backgroundColor: color, foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           padding: const EdgeInsets.symmetric(vertical: 18),
         ),
