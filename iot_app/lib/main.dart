@@ -77,7 +77,6 @@ class _HomePageState extends State<HomePage> {
       }
     });
 
-    // Listen Status Lampu
     db.child("lampu").onValue.listen((e) {
       final d = e.snapshot.value as Map?;
       if (d != null) {
@@ -89,7 +88,6 @@ class _HomePageState extends State<HomePage> {
       }
     });
 
-    // Listen Jadwal dari Firebase
     db.child("settings").onValue.listen((e) {
       final d = e.snapshot.value as Map?;
       if (d != null) {
@@ -100,7 +98,6 @@ class _HomePageState extends State<HomePage> {
       }
     });
 
-    // Listen Riwayat Logs
     db.child("logs").limitToLast(10).onValue.listen((e) {
       final d = e.snapshot.value as Map?;
       if (d == null) {
@@ -115,7 +112,6 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  // FUNGSI UBAH JAM
   Future<void> _pickTime(String key) async {
     TimeOfDay? picked = await showTimePicker(
       context: context,
@@ -127,7 +123,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // FUNGSI HAPUS RIWAYAT
   Future<void> _clearLogs() async {
     await db.child("logs").remove();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -159,7 +154,6 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 30),
                   
-                  // CARD STATUS UTAMA
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(25),
@@ -172,19 +166,21 @@ class _HomePageState extends State<HomePage> {
                       children: [
                         Icon(Icons.lightbulb_rounded, size: 80, color: status ? Colors.amber : Colors.white10),
                         Text(
-                          status ? "MENYALA" : "MATI",
+                          status ? "Light up" : "Light Off",
                           style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: status ? Colors.amber : Colors.white70),
                         ),
-                        Text("Mode Terakhir: $mode", style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                        Text("Last Mode: $mode", style: const TextStyle(color: Colors.white70, fontSize: 14)),
                         const Divider(height: 30, color: Colors.white10),
                         
-                        // ROW PENGATURAN JADWAL
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
-                            _timeDisplay("MULAI", startStr, () => _pickTime("startTime")),
-                            const Icon(Icons.arrow_forward_rounded, color: Colors.white24, size: 20),
-                            _timeDisplay("SELESAI", endStr, () => _pickTime("endTime")),
+                            _timeDisplay("Start", startStr, () => _pickTime("startTime")),
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 40), // Posisi icon panah
+                              child: Icon(Icons.arrow_forward_rounded, color: Colors.white24, size: 20),
+                            ),
+                            _timeDisplay("End", endStr, () => _pickTime("endTime")),
                           ],
                         )
                       ],
@@ -194,31 +190,29 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 30),
                   Row(
                     children: [
-                      _actionBtn("NYALAKAN", Colors.green.shade600, () => db.child("command/value").set("ON")),
+                      _actionBtn("Turn On", Colors.green.shade600, () => db.child("command/value").set("ON")),
                       const SizedBox(width: 20),
-                      _actionBtn("MATIKAN", Colors.redAccent.shade400, () => db.child("command/value").set("OFF")),
+                      _actionBtn("Turn Off", Colors.redAccent.shade400, () => db.child("command/value").set("OFF")),
                     ],
                   ),
                   
                   const SizedBox(height: 30),
                   
-                  // HEADER RIWAYAT + TOMBOL HAPUS
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("Riwayat Aktivitas", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      const Text("Activity History", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                       TextButton.icon(
                         onPressed: _clearLogs,
                         icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
-                        label: const Text("Hapus", style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                        label: const Text("Clear History", style: TextStyle(color: Colors.redAccent, fontSize: 12)),
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
                   
-                  // LIST LOGS
                   logs.isEmpty 
-                    ? const Text("Tidak ada riwayat", style: TextStyle(color: Colors.white24))
+                    ? const Text("History Not Found", style: TextStyle(color: Colors.white24))
                     : Column(
                         children: logs.map((log) => Container(
                           width: double.infinity,
@@ -240,17 +234,28 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // WIDGET TOMBOL UBAH JADWAL
   Widget _timeDisplay(String label, String value, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-          const Text("Sentuh untuk ubah", style: TextStyle(color: Colors.blueAccent, fontSize: 9)),
-        ],
-      ),
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 32,
+          child: OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.blueAccent,
+              side: const BorderSide(color: Colors.blueAccent, width: 1),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
+            onPressed: onTap,
+            child: const Text("Change", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+          ),
+        ),
+      ],
     );
   }
 
