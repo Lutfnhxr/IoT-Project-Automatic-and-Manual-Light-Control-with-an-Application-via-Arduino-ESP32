@@ -20,8 +20,8 @@ bool lampuStatus = false;
 bool lastScheduleState = false;
 bool scheduleEnable = true;
 String controlSource = "AUTO"; 
-String startTime = "17:45";
-String endTime   = "03:30";
+String startTime = "17:45"; // Akan diupdate dari Firebase
+String endTime   = "03:30"; // Akan diupdate dari Firebase
 
 /* ===== FUNGSI UTILITAS ===== */
 String waktuLengkap() {
@@ -84,28 +84,24 @@ void setup() {
   config.signer.tokens.legacy_token = FIREBASE_AUTH;
   Firebase.begin(&config, &auth);
 
-  // Tunggu sinkronisasi waktu (Mencegah lampu mati tiba-tiba)
   time_t now = time(nullptr);
   int retry = 0;
   while (now < 1000000 && retry < 20) { delay(500); now = time(nullptr); retry++; }
 
-  // --- LOGIKA RECOVERY SETELAH BOOT ---
+  // Ambil jadwal terbaru saat pertama kali nyala
+  if (Firebase.getString(fbdo, "/settings/startTime")) startTime = fbdo.stringData();
+  if (Firebase.getString(fbdo, "/settings/endTime")) endTime = fbdo.stringData();
+
   String lastMode = "AUTO";
-  if (Firebase.getString(fbdo, "/lampu/control")) {
-    lastMode = fbdo.stringData();
-  }
-  if (Firebase.getBool(fbdo, "/lampu/status")) {
-    lampuStatus = fbdo.boolData();
-  }
+  if (Firebase.getString(fbdo, "/lampu/control")) lastMode = fbdo.stringData();
+  if (Firebase.getBool(fbdo, "/lampu/status")) lampuStatus = fbdo.boolData();
 
   struct tm* t = localtime(&now);
   bool currSchedule = scheduleEnable && inSchedule(t->tm_hour, t->tm_min);
 
   if (lastMode == "MANUAL") {
-    // Mode Manual: Pertahankan status relay terakhir sebelum reboot
     digitalWrite(RELAY_PIN, lampuStatus ? HIGH : LOW);
   } else {
-    // Mode Auto: Ikuti jadwal saat ini
     digitalWrite(RELAY_PIN, currSchedule ? HIGH : LOW);
     lampuStatus = currSchedule;
   }
@@ -120,7 +116,15 @@ void setup() {
 void loop() {
   if (!Firebase.ready()) return;
 
-  // 1. SAKLAR FISIK
+  // 1. UPDATE JADWAL DARI FIREBASE (Agar sinkron dengan aplikasi)
+  static unsigned long lastCheck = 0;
+  if (millis() - lastCheck > 10000) { // Cek setiap 10 detik
+    if (Firebase.getString(fbdo, "/settings/startTime")) startTime = fbdo.stringData();
+    if (Firebase.getString(fbdo, "/settings/endTime")) endTime = fbdo.stringData();
+    lastCheck = millis();
+  }
+
+  // 2. SAKLAR FISIK
   static bool lastBtn = HIGH;
   bool btn = digitalRead(SAKLAR_PIN);
   if (btn != lastBtn) {
@@ -131,14 +135,14 @@ void loop() {
     lastBtn = btn;
   }
 
-  // 2. KONTROL APLIKASI
+  // 3. KONTROL APLIKASI
   if (Firebase.getString(fbdo, "/command/value")) {
     String cmd = fbdo.stringData();
     if (cmd == "ON") { setLamp(true, "MANUAL_APP"); Firebase.setString(fbdo, "/command/value", "NONE"); }
     else if (cmd == "OFF") { setLamp(false, "MANUAL_APP"); Firebase.setString(fbdo, "/command/value", "NONE"); }
   }
 
-  // 3. LOGIKA JADWAL (AUTO)
+  // 4. LOGIKA JADWAL (AUTO)
   time_t now = time(nullptr);
   struct tm* t = localtime(&now);
   if (t && t->tm_year >= 120) {
@@ -151,7 +155,6 @@ void loop() {
       if (currSchedule) {
         if (!lampuStatus) setLamp(true, "AUTO");
       } else {
-        // Jika jadwal berakhir, paksa mati meskipun sebelumnya Manual ON
         setLamp(false, "AUTO"); 
       }
     }
