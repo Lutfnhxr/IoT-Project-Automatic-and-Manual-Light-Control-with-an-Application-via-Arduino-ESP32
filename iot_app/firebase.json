@@ -1,0 +1,40 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "smart-lamp-iot-485d3",
+          "appId": "1:600577618956:android:963b88f59ddf36dcb9aa29",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "smart-lamp-iot-485d3",
+          "configurations": {
+            "android": "1:600577618956:android:963b88f59ddf36dcb9aa29",
+            "ios": "1:600577618956:ios:fc7f07ac72bad83bb9aa29",
+            "macos": "1:600577618956:ios:fc7f07ac72bad83bb9aa29",
+            "web": "1:600577618956:web:18834b7314d9081fb9aa29",
+            "windows": "1:600577618956:web:9e93163258be7f28b9aa29"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": []
+    }
+  ]
+}
