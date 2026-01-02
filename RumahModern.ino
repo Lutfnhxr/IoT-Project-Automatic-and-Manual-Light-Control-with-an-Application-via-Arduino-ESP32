@@ -66,7 +66,7 @@ void setLamp(bool on, String mode) {
   lampuStatus = on;
   controlSource = mode.startsWith("MANUAL") ? "MANUAL" : "AUTO";
   Firebase.setString(fbdo, "/lampu/control", controlSource);
-  pushLog(on ? "Lampu MENYALA" : "Lampu MATI", mode);
+  pushLog(on ? "Light ON" : "Light OFF", mode);
 }
 
 /* ===== SETUP ===== */
