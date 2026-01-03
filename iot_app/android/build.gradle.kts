@@ -1,3 +1,15 @@
+// TAMBAHKAN BLOK BUILDSCRIPT INI DI PALING ATAS
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Dependensi untuk Google Services agar Firebase berjalan
+        classpath("com.google.gms:google-services:4.4.2")
+    }
+}
+
 allprojects {
     repositories {
         google()
