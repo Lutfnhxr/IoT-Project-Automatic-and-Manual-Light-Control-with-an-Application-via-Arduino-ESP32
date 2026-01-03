@@ -1,12 +1,12 @@
 plugins {
     id("com.android.application")
-    id("com.google.gms.google-services")
+    id("com.google.gms.google-services") // Pastikan google-services.json sudah ada di folder ini
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
-    namespace = "com.example.iot_app"
+    namespace = "com.example.Light_Control"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -21,8 +21,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.iot_app"
-        minSdk = flutter.minSdkVersion 
+        applicationId = "com.example.Light_Control"
+        // Diubah ke 21 agar support Firebase & Notifications
+        minSdk = 21 
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -31,6 +32,7 @@ android {
 
     buildTypes {
         release {
+            // Gunakan signingConfig release untuk produksi nantinya
             signingConfig = signingConfigs.getByName("debug")
         }
     }
