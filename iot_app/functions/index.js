@@ -1,61 +1,68 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-
 admin.initializeApp();
 
 exports.lampNotification = functions.database
-  .ref("/lampu/last_event")
-  .onWrite(async (change) => {
-    // 1. Ambil data setelah perubahan
-    const data = change.after.val();
-    
-    // Cegah error jika data dihapus (null)
-    if (!data) return null;
+  .ref("/lampu/status")
+  .onUpdate(async (change) => {
+    const after = change.after.val(); // Status sekarang (true/false)
+    const before = change.before.val(); // Status sebelumnya
 
-    const text = data.text || "Perubahan status lampu";
-    const mode = data.mode || "UNKNOWN";
+    // 1. Hanya kirim jika status benar-benar berubah (mencegah loop/notif ganda)
+    if (after === before) return null;
 
-    let title = "Smart Lamp";
-    let body = text;
-
-    // 2. Logika Penentuan Judul & Isi Notifikasi
-    if (mode === "AUTO") {
-      title = "⏰ Lampu Otomatis";
-      body = text + " (Jadwal)";
-    } else if (mode === "MANUAL_APP") {
-      title = "📱 Kontrol Aplikasi";
-      body = text + " via Aplikasi";
-    } else if (mode === "MANUAL_SWITCH") {
-      title = "🔘 Saklar Manual";
-      body = text + " via Saklar";
-    }
+    const title = after ? "💡 Light ON" : "🌑 Light OFF";
+    const body = after ? "The Smart Lamp system detects the Light is ON." : "The Smart Lamp system detects the Light is OFF.";
 
     try {
-      // 3. Ambil daftar Token FCM dari Database
+      // 2. Ambil semua token perangkat yang terdaftar di database
       const tokenSnapshot = await admin.database().ref("fcm_tokens").once("value");
-      
       if (!tokenSnapshot.exists()) {
-        console.log("Tidak ada token ditemukan.");
+        console.log("No device tokens found in /fcm_tokens");
         return null;
       }
 
       const tokens = Object.keys(tokenSnapshot.val());
-      
-      // 4. Kirim Notifikasi ke semua perangkat terdaftar
-      const response = await admin.messaging().sendToDevice(tokens, {
+
+      // 3. Susun pesan notifikasi dengan standar modern (V1 SDK)
+      const message = {
+        tokens: tokens,
         notification: {
           title: title,
           body: body,
-          sound: "default", // Tambahkan suara default
-          clickAction: "FLUTTER_NOTIFICATION_CLICK" // Penting agar App terbuka saat diklik
-        }
-      });
+        },
+        android: {
+          priority: "high",
+          notification: {
+            sound: "default",
+            // Channel ID harus sama persis dengan di AndroidManifest & main.dart
+            channelId: "smart_lamp_channel", 
+            clickAction: "FLUTTER_NOTIFICATION_CLICK",
+          },
+        },
+        // Agar notifikasi muncul juga di iOS jika nantinya dikembangkan
+        apns: {
+          payload: {
+            aps: {
+              sound: "default",
+            },
+          },
+        },
+      };
 
-      console.log(`Notifikasi berhasil dikirim ke ${tokens.length} perangkat.`);
-      return response;
+      // 4. Kirim ke semua perangkat sekaligus
+      const response = await admin.messaging().sendEachForMulticast(message);
+      
+      console.log(`Successfully sent ${response.successCount} notifications.`);
+      
+      // Opsional: Bersihkan token yang sudah tidak aktif (expired)
+      if (response.failureCount > 0) {
+        console.log(`${response.failureCount} tokens failed.`);
+      }
 
+      return null;
     } catch (error) {
-      console.error("Gagal mengirim notifikasi:", error);
+      console.error("Error sending notification:", error);
       return null;
     }
   });
