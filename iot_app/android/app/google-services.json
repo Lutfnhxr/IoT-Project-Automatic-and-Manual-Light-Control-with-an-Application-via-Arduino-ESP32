@@ -1,22 +1,22 @@
 {
   "project_info": {
-    "project_number": "600577618956",
-    "firebase_url": "https://smart-lamp-iot-485d3-default-rtdb.asia-southeast1.firebasedatabase.app",
-    "project_id": "smart-lamp-iot-485d3",
-    "storage_bucket": "smart-lamp-iot-485d3.firebasestorage.app"
+    "project_number": "",
+    "firebase_url": "",
+    "project_id": "",
+    "storage_bucket": ""
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:600577618956:android:963b88f59ddf36dcb9aa29",
+        "mobilesdk_app_id": "",
         "android_client_info": {
-          "package_name": "com.example.iot_app"
+          "package_name": "com.example.Light_Control"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyAKCG61RQ3fZJchcsoBgxWwkKEeGFNcx7U"
+          "current_key": ""
         }
       ],
       "services": {
