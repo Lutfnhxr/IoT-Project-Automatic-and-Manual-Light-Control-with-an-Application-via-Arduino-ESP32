@@ -1,4 +1,4 @@
-name: iot_app
+name: Light_Control
 description: Smart Lamp IoT App
 publish_to: 'none'
 version: 1.0.0+1
@@ -9,19 +9,27 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  
+  # Firebase & Realtime Database
   firebase_core: ^3.8.0
   firebase_database: ^11.1.4
+  
+  # Cloud Messaging (Notifikasi)
   firebase_messaging: ^15.0.0
-  flutter_local_notifications: ^19.5.0
+  
+  # Local Notifications
+  flutter_local_notifications: ^17.0.0 # Versi stabil untuk Android 13+
+  
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
-  # TAMBAHKAN BARIS DI BAWAH INI
+
+  # Asset Gambar Background
   assets:
     - assets/bg.jpeg
